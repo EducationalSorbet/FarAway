@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OrbNet | ISRO Flight Ops</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&family=Roboto:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/satellite.js/dist/satellite.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <style>
+        :root {
+            --bg-base: #0A0E14;
+            --bg-panel: #0D1117;
+            --accent: #4DD9E8;
+            --alert: #E8893A;
+            --text-main: #E0E0E0;
+            --text-dim: #6E7681;
+            --border: #1F242C;
+            --grid-line: rgba(31, 36, 44, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: 'Roboto', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background-image:
+                radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                linear-gradient(var(--grid-line) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+            background-size: 100px 100px, 20px 20px, 20px 20px;
+            background-position: center center;
+        }
+
+        .mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* Top Bar */
+        header {
+            height: 40px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 12px;
+            letter-spacing: 1px;
+            background: rgba(10, 14, 20, 0.9);
+            z-index: 10;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin-right: 8px;
+            box-shadow: 0 0 4px var(--accent);
+        }
+
+        .sat-name {
+            font-weight: 700;
+            color: #fff;
+            margin-right: 6px;
+        }
+
+        /* Main Layout */
+        main {
+            display: flex;
+            flex: 1;
+            height: calc(100vh - 40px);
+        }
+
+        /* Map Section (60%) */
+        .map-section {
+            width: 60%;
+            position: relative;
+            border-right: 1px solid var(--border);
+            background: radial-gradient(circle at center, rgba(13, 17, 23, 0) 0%, rgba(10, 14, 20, 0.8) 100%);
+        }
+
+        #map-container {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+        }
+
+        /* Map Overlays */
+        .map-overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            pointer-events: none;
+            line-height: 1.4;
+        }
+
+        .info-card {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 280px;
+            background: rgba(13, 17, 23, 0.85);
+            border: 1px solid var(--border);
+            padding: 16px;
+            font-size: 11px;
+            line-height: 1.5;
+            backdrop-filter: blur(4px);
+            z-index: 5;
+        }
+
+        .info-card strong {
+            color: #fff;
+            font-size: 13px;
+            display: block;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .info-card p {
+            color: var(--text-dim);
+            margin-bottom: 10px;
+        }
+
+        .info-card a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            transition: opacity 0.2s;
+        }
+
+        .info-card a:hover {
+            opacity: 0.7;
+        }
+
+        .crosshair {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border: 1px solid var(--accent);
+            transform: translate(-50%, -50%);
+            transition: left 0.1s, top 0.1s;
+        }
+
+        .crosshair::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 4px;
+            height: 4px;
+            background: var(--accent);
+            transform: translate(-50%, -50%);
+        }
+
+        /* Side Panel (40%) */
+        .side-panel {
+            width: 40%;
+            display: flex;
+            flex-direction: column;
+            background: rgba(13, 17, 23, 0.85);
+            backdrop-filter: blur(4px);
+        }
+
+        .panel-block {
+            border-bottom: 1px solid var(--border);
+            padding: 20px;
+        }
+
+        .panel-header {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            letter-spacing: 2px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Grid Data */
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px 16px;
+        }
+
+        .data-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .data-val {
+            font-size: 22px;
+            line-height: 1.2;
+            margin-bottom: 2px;
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .data-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Charts */
+        .chart-container {
+            margin-bottom: 16px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            margin-bottom: 6px;
+        }
+
+        canvas.oscilloscope {
+            width: 100%;
+            height: 45px;
+            background: #000;
+            border: 1px solid var(--border);
+            display: block;
+        }
+
+        /* Anomaly Log */
+        .log-feed {
+            flex: 1;
+            padding: 20px;
+            overflow-y: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-entries {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column-reverse;
+        }
+
+        .log-entry {
+            font-size: 11px;
+            line-height: 1.6;
+            color: var(--text-dim);
+            padding: 4px 0;
+            border-bottom: 1px dashed var(--border);
+        }
+
+        .log-entry.alert {
+            color: var(--alert);
+        }
+
+        .log-entry span.time {
+            color: var(--text-main);
+            margin-right: 8px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="mono">
+        <div>
+            <span class="status-indicator"></span>
+            SYS_TRK: <span class="sat-name" id="sat-name-header">ACQUIRING...</span>
+            <span style="color: var(--text-dim)">| NORAD 35935</span>
+        </div>
+        <div>
+            UPLINK_SECURE // <span id="clock">00:00:00 UTC</span>
+        </div>
+    </header>
+
+    <main>
+        <section class="map-section">
+            <div id="map-container"></div>
+
+            <div class="map-overlay mono" style="font-size: 11px; color: var(--accent);">
+                > GND_TRK_ACTIVE<br>
+                > PRJ: EQUIRECTANGULAR<br>
+                > GRID: 10° GRATICULE
+            </div>
+
+            <div class="info-card">
+                <strong class="mono" id="sat-name-card">CARTOSAT-2B</strong>
+                <p>An Earth observation satellite built by the Indian Space Research Organisation (ISRO). Operating in a
+                    sun-synchronous orbit, it provides high-resolution imagery for cartographic applications, urban
+                    infrastructure planning, and resource management.</p>
+                <a href="https://en.wikipedia.org/wiki/Cartosat-2B" target="_blank" class="mono">READ MISSION SPECS
+                    ↗</a>
+            </div>
+
+            <div id="sat-marker" class="crosshair" style="display: none;"></div>
+        </section>
+
+        <section class="side-panel">
+            <div class="panel-block">
+                <div class="panel-header mono">Live Orbital State <span
+                        style="color:var(--accent)">[SATELLITE.JS]</span></div>
+                <div class="data-grid mono">
+                    <div class="data-item">
+                        <span class="data-val" id="val-lat">--.--°</span>
+                        <span class="data-label">Latitude</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-val" id="val-lon">--.--°</span>
+                        <span class="data-label">Longitude</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-val" id="val-alt">---.-</span>
+                        <span class="data-label">Altitude (KM)</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-val" id="val-vel">-.---</span>
+                        <span class="data-label">Velocity (KM/S)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-block" style="padding-bottom: 8px;">
+                <div class="panel-header mono">Pass Prediction (Bangalore)</div>
+                <div class="data-grid mono" style="grid-template-columns: 1fr;">
+                    <div class="data-item">
+                        <span class="data-val" style="color: var(--accent);" id="val-aos">CALCULATING...</span>
+                        <span class="data-label">Time to Next AOS (Elevation > 10°)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-block" style="border-bottom: none;">
+                <div class="panel-header mono">Simulated Telemetry <span style="color:var(--text-dim)">[ISO-FOREST
+                        Z-SCORE]</span></div>
+
+                <div class="chart-container">
+                    <div class="chart-header mono"><span>SYS_VOLTAGE</span> <span id="lbl-volt">28.0V</span></div>
+                    <canvas id="chart-volt" class="oscilloscope"></canvas>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-header mono"><span>SYS_TEMP</span> <span id="lbl-temp">15.0°C</span></div>
+                    <canvas id="chart-temp" class="oscilloscope"></canvas>
+                </div>
+            </div>
+
+            <div class="log-feed">
+                <div class="panel-header mono">Anomaly Detect Log</div>
+                <div class="log-entries mono" id="log-container">
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        // CONFIG
+        const NORAD_ID = 35935; // CARTOSAT-2B
+        const TLE_URL = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${NORAD_ID}&FORMAT=TLE`;
+        const BLR_LAT = 12.9716;
+        const BLR_LON = 77.5946;
+
+        let satrec = null;
+        let mapSvg, projection, path;
+        let groundTrackPath;
+
+        // FETCH TLE
+        async function initSatellite() {
+            try {
+                const response = await fetch(TLE_URL);
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+
+                // CelesTrak TLE format provides the satellite name on the first line
+                if (lines.length >= 3) {
+                    const satName = lines[0].trim();
+                    document.getElementById('sat-name-header').innerText = satName;
+                    document.getElementById('sat-name-card').innerText = satName;
+
+                    const l1 = lines[1].trim();
+                    const l2 = lines[2].trim();
+                    satrec = satellite.twoline2satrec(l1, l2);
+                    logEntry("SYS", `TLE acquired for ${satName}. Orbit initialized.`);
+                    calcNextPass();
+                    setInterval(updateOrbit, 1000);
+                }
+            } catch (e) {
+                logEntry("ERR", "Failed to fetch TLE. Check CORS/Network.", true);
+            }
+        }
+
+        // MAP SETUP (D3)
+        function initMap() {
+            const container = document.getElementById('map-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            mapSvg = d3.select("#map-container").append("svg")
+                .attr("width", width)
+                .attr("height", height);
+
+            projection = d3.geoEquirectangular()
+                .translate([width / 2, height / 2])
+                .scale(width / (2 * Math.PI));
+
+            path = d3.geoPath().projection(projection);
+
+            // Add Graticule (Grid lines for texture/technical feel)
+            const graticule = d3.geoGraticule();
+            mapSvg.append("path")
+                .datum(graticule)
+                .attr("fill", "none")
+                .attr("stroke", "rgba(255, 255, 255, 0.05)")
+                .attr("stroke-width", "0.5px")
+                .attr("d", path);
+
+            // Fetch lightweight world geometry
+            d3.json("https://unpkg.com/world-atlas@2.0.2/countries-110m.json").then(world => {
+                mapSvg.append("path")
+                    .datum(topojson.mesh(world, world.objects.countries, (a, b) => a !== b))
+                    .attr("fill", "none")
+                    .attr("stroke", "#1F242C")
+                    .attr("stroke-width", 1)
+                    .attr("d", path);
+
+                // Add ground track path element
+                groundTrackPath = mapSvg.append("path")
+                    .attr("fill", "none")
+                    .attr("stroke", "rgba(77, 217, 232, 0.4)")
+                    .attr("stroke-width", 1.5)
+                    .attr("stroke-dasharray", "4,4");
+            });
+        }
+
+        // REAL-TIME ORBIT PROPAGATION
+        function updateOrbit() {
+            if (!satrec) return;
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toISOString().split('.')[0] + " Z";
+
+            const pv = satellite.propagate(satrec, now);
+            if (!pv.position || typeof pv.position === 'boolean') return;
+
+            const gmst = satellite.gstime(now);
+            const gd = satellite.eciToGeodetic(pv.position, gmst);
+
+            const lat = satellite.degreesLat(gd.latitude);
+            const lon = satellite.degreesLong(gd.longitude);
+            const alt = gd.height;
+            const vel = Math.sqrt(Math.pow(pv.velocity.x, 2) + Math.pow(pv.velocity.y, 2) + Math.pow(pv.velocity.z, 2));
+
+            // Update DOM
+            document.getElementById('val-lat').innerText = lat.toFixed(4) + '°';
+            document.getElementById('val-lon').innerText = lon.toFixed(4) + '°';
+            document.getElementById('val-alt').innerText = alt.toFixed(1);
+            document.getElementById('val-vel').innerText = vel.toFixed(3);
+
+            // Update Map Marker
+            const coords = projection([lon, lat]);
+            if (coords) {
+                const marker = document.getElementById('sat-marker');
+                marker.style.display = 'block';
+                marker.style.left = coords[0] + 'px';
+                marker.style.top = coords[1] + 'px';
+            }
+
+            updateGroundTrack(now);
+        }
+
+        // COMPUTE GROUND TRACK (Last 90 mins)
+        function updateGroundTrack(currentTime) {
+            if (!groundTrackPath) return;
+            const lineData = [];
+            // Calculate positions for 90 minutes behind to current time
+            for (let i = -90; i <= 0; i += 2) {
+                const t = new Date(currentTime.getTime() + i * 60000);
+                const pv = satellite.propagate(satrec, t);
+                if (pv.position && typeof pv.position !== 'boolean') {
+                    const gd = satellite.eciToGeodetic(pv.position, satellite.gstime(t));
+                    lineData.push([satellite.degreesLong(gd.longitude), satellite.degreesLat(gd.latitude)]);
+                }
+            }
+
+            // Split path if it crosses the anti-meridian
+            let segments = [];
+            let currentSegment = [];
+            for (let i = 0; i < lineData.length; i++) {
+                if (i > 0 && Math.abs(lineData[i][0] - lineData[i - 1][0]) > 180) {
+                    segments.push(currentSegment);
+                    currentSegment = [];
+                }
+                currentSegment.push(lineData[i]);
+            }
+            segments.push(currentSegment);
+
+            const multiLineString = {
+                type: "MultiLineString",
+                coordinates: segments
+            };
+
+            groundTrackPath.attr("d", path(multiLineString));
+        }
+
+        // COMPUTE PASS OVER TARGET
+        function calcNextPass() {
+            if (!satrec) return;
+            let time = new Date();
+            let found = false;
+
+            // Search next 24 hours in 1-minute steps
+            for (let i = 0; i < 24 * 60; i++) {
+                time = new Date(time.getTime() + 60000);
+                const pv = satellite.propagate(satrec, time);
+                if (!pv.position) continue;
+
+                const gmst = satellite.gstime(time);
+                const observerGd = {
+                    longitude: satellite.degreesToRadians(BLR_LON),
+                    latitude: satellite.degreesToRadians(BLR_LAT),
+                    height: 0.92 // Bangalore alt km
+                };
+
+                const posEcf = satellite.eciToEcf(pv.position, gmst);
+                const lookAngles = satellite.ecfToLookAngles(observerGd, posEcf);
+                const elevationDeg = lookAngles.elevation * 180 / Math.PI;
+
+                if (elevationDeg > 10) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found) {
+                const updateCountdown = () => {
+                    const now = new Date();
+                    const diff = time - now;
+                    if (diff <= 0) {
+                        document.getElementById('val-aos').innerText = "IN PASS";
+                        document.getElementById('val-aos').style.color = "#E8893A";
+                        setTimeout(calcNextPass, 60000); // Recalculate after a minute
+                        return;
+                    }
+                    const h = Math.floor(diff / 3600000).toString().padStart(2, '0');
+                    const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, '0');
+                    const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, '0');
+                    document.getElementById('val-aos').innerText = `T- ${h}:${m}:${s}`;
+                };
+                setInterval(updateCountdown, 1000);
+                updateCountdown();
+            } else {
+                document.getElementById('val-aos').innerText = "NO PASS < 24H";
+            }
+        }
+
+        // SIMULATED TELEMETRY & CHARTS
+        class Chart {
+            constructor(id, baseVal, variance) {
+                this.canvas = document.getElementById(id);
+                this.ctx = this.canvas.getContext('2d');
+                this.width = this.canvas.clientWidth;
+                this.height = this.canvas.clientHeight;
+                this.canvas.width = this.width;
+                this.canvas.height = this.height;
+
+                this.baseVal = baseVal;
+                this.variance = variance;
+                this.data = new Array(this.width).fill(baseVal);
+
+                this.history = [];
+            }
+
+            update(labelId, unit, idName) {
+                let val = this.baseVal + (Math.random() - 0.5) * this.variance;
+
+                let isAnomaly = false;
+                if (Math.random() < 0.002) {
+                    val += (Math.random() > 0.5 ? 1 : -1) * this.variance * 8;
+                    isAnomaly = true;
+                }
+
+                this.history.push(val);
+                if (this.history.length > 50) this.history.shift();
+
+                if (this.history.length === 50) {
+                    const mean = this.history.reduce((a, b) => a + b, 0) / 50;
+                    const std = Math.sqrt(this.history.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / 50) || 1;
+                    const z = Math.abs(val - mean) / std;
+
+                    if (z > 3.5 && isAnomaly) {
+                        logEntry("WARN", `Z-Score Spike (${z.toFixed(2)}σ) on ${idName}: ${val.toFixed(2)}`, true);
+                    }
+                }
+
+                this.data.shift();
+                this.data.push(val);
+                document.getElementById(labelId).innerText = val.toFixed(2) + unit;
+
+                this.ctx.clearRect(0, 0, this.width, this.height);
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = '#4DD9E8';
+                this.ctx.lineWidth = 1;
+
+                const min = this.baseVal - this.variance * 4;
+                const max = this.baseVal + this.variance * 4;
+                const range = max - min;
+
+                for (let i = 0; i < this.width; i++) {
+                    const normalized = (this.data[i] - min) / range;
+                    const y = this.height - (normalized * this.height);
+                    if (i === 0) this.ctx.moveTo(i, y);
+                    else this.ctx.lineTo(i, y);
+                }
+                this.ctx.stroke();
+            }
+        }
+
+        const voltChart = new Chart('chart-volt', 28.0, 0.4);
+        const tempChart = new Chart('chart-temp', 15.0, 1.2);
+
+        function simLoop() {
+            voltChart.update('lbl-volt', 'V', 'SYS_VOLTAGE');
+            tempChart.update('lbl-temp', '°C', 'SYS_TEMP');
+            requestAnimationFrame(simLoop);
+        }
+
+        // LOG FEED
+        const logContainer = document.getElementById('log-container');
+        function logEntry(level, msg, isAlert = false) {
+            const el = document.createElement('div');
+            el.className = `log-entry ${isAlert ? 'alert' : ''}`;
+            const time = new Date().toISOString().split('T')[1].slice(0, -1);
+            el.innerHTML = `<span class="time">[${time}]</span> <span style="opacity:0.7">[${level}]</span> ${msg}`;
+            logContainer.prepend(el);
+
+            if (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+
+        // BOOT SEQUENCE
+        window.addEventListener('resize', () => {
+            location.reload();
+        });
+
+        initMap();
+        initSatellite();
+        logEntry("SYS", "Awaiting telemetry stream...");
+        simLoop();
+
+    </script>
+</body>
+
+</html>
